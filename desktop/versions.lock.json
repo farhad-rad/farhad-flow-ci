@@ -1,0 +1,64 @@
+{
+  "$schema_comment": "Wave 0 pins for Farhad Flow CI desktop builds. Bump deliberately; Wave 2–3 scripts must honor these.",
+  "pinned_at": "2026-08-09",
+  "product": {
+    "display_name": "Farhad Flow CI",
+    "id": "FarhadFlowCI",
+    "identifier": "ci.zeenome.farhadflow"
+  },
+  "tauri": {
+    "crate": "2.11.5",
+    "cli": "2.11.3",
+    "npm_package": "@tauri-apps/cli@2.11.3",
+    "notes": "Stable Tauri 2 line as of pin date; CLI 2.11.3 is latest published tauri-cli matching 2.11.x."
+  },
+  "rust": {
+    "channel": "stable",
+    "version": "1.90.0",
+    "notes": "Align with current tauri-cli rust-version (>=1.90). Use rustup toolchain 1.90.0 for CI."
+  },
+  "node": {
+    "version": "22.12.0",
+    "notes": "Build-time only (FE bake). Matches Langflow Vite 8 floor (Node 20.19+ / 22.12+). End users do not need Node."
+  },
+  "python": {
+    "version": "3.12.13",
+    "distribution": "python-build-standalone",
+    "release_tag": "20260807",
+    "targets": {
+      "windows_x86_64": "cpython-3.12.13+20260807-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+      "linux_x86_64": "cpython-3.12.13+20260807-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
+    },
+    "asset_url_prefix": "https://github.com/astral-sh/python-build-standalone/releases/download/20260807",
+    "notes": "Prefer install_only_stripped for size. Wave 2 freezes venv on top of this interpreter."
+  },
+  "git": {
+    "windows_mingit": {
+      "version": "2.55.0.3",
+      "tag": "v2.55.0.windows.3",
+      "asset": "MinGit-2.55.0.3-64-bit.zip",
+      "url": "https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.3/MinGit-2.55.0.3-64-bit.zip",
+      "sha256": "f48e2d2dc74a24454adc6d8fd0ac25bf9c2386f19cfb06202b9465aaad4f9f05"
+    },
+    "linux": {
+      "version": "2.55.0",
+      "source": "https://www.kernel.org/pub/software/scm/git/git-2.55.0.tar.xz",
+      "sha256": "457fdb04dc8728e007d4688695e6912e6f680727920f2a40bf11eacc17505357",
+      "notes": "Wave 3: vendor-git.sh builds from this tarball into resources/git/ (bin + libexec) with NO_RUST=YesPlease (no cargo). Prefer same major.minor as MinGit for staff parity."
+    }
+  },
+  "release_artifacts": {
+    "windows_nsis": "FarhadFlowCI_{X.Y.Z}_x64-setup.exe",
+    "windows_nsis_channel_alias": "FarhadFlowCI-desktop-v{X.Y.Z}-windows-nsis.exe",
+    "windows_nsis_tauri_raw": "Farhad Flow CI_{X.Y.Z}_x64-setup.exe",
+    "ubuntu_amd64_deb": "FarhadFlowCI-desktop-v{X.Y.Z}-ubuntu-amd64.deb",
+    "ubuntu_amd64_deb_dpkg": "farhad-flow-ci_{X.Y.Z}_amd64.deb",
+    "ubuntu_amd64_deb_tauri_raw": "Farhad Flow CI_{X.Y.Z}_amd64.deb",
+    "ubuntu_package_name": "farhad-flow-ci",
+    "notes": "Control Package=farhad-flow-ci. Tauri raw deb uses productName (spaces); build-ubuntu.sh copies to farhad-flow-ci_X.Y.Z_amd64.deb + staff alias. Depends = WebKitGTK/GTK only (no python/git)."
+  },
+  "listen": {
+    "host": "127.0.0.1",
+    "port_range": [7860, 7870]
+  }
+}

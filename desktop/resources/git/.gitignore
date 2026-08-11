@@ -1,0 +1,6 @@
+# Vendored by Wave 3 scripts — do not commit large binaries.
+# Keep placeholders / docs only in git.
+*
+!.gitignore
+!.gitkeep
+!README.md

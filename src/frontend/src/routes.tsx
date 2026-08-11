@@ -1,0 +1,239 @@
+import { lazy } from "react";
+import {
+  createBrowserRouter,
+  createRoutesFromElements,
+  Outlet,
+  Route,
+} from "react-router-dom";
+import { ProtectedAdminRoute } from "./components/authorization/authAdminGuard";
+import { ProtectedRoute } from "./components/authorization/authGuard";
+import { ProtectedLoginRoute } from "./components/authorization/authLoginGuard";
+import { PlaygroundAuthGate } from "./components/authorization/playgroundAuthGate";
+import ContextWrapper from "./contexts";
+import CustomDashboardWrapperPage from "./customization/components/custom-DashboardWrapperPage";
+import { CustomNavigate } from "./customization/components/custom-navigate";
+import { BASENAME } from "./customization/config-constants";
+import {
+  ENABLE_CUSTOM_PARAM,
+  ENABLE_FILE_MANAGEMENT,
+  ENABLE_KNOWLEDGE_BASES,
+} from "./customization/feature-flags";
+import { CustomRoutesStorePages } from "./customization/utils/custom-routes-store-pages";
+import { AppAuthenticatedPage } from "./pages/AppAuthenticatedPage";
+import { AppInitPage } from "./pages/AppInitPage";
+import { AppWrapperPage } from "./pages/AppWrapperPage";
+import FlowPage from "./pages/FlowPage";
+import LoginPage from "./pages/LoginPage";
+import FilesPage from "./pages/MainPage/pages/filesPage";
+import HomePage from "./pages/MainPage/pages/homePage";
+import KnowledgePage from "./pages/MainPage/pages/knowledgePage";
+import SourceChunksPage from "./pages/MainPage/pages/knowledgePage/sourceChunksPage/SourceChunksPage";
+import CollectionPage from "./pages/MainPage/pages/main-page";
+import SettingsPage from "./pages/SettingsPage";
+import DBProvidersPage from "./pages/SettingsPage/pages/DBProvidersPage";
+import GlobalVariablesPage from "./pages/SettingsPage/pages/GlobalVariablesPage";
+import ModelProvidersPage from "./pages/SettingsPage/pages/ModelProvidersPage";
+import ShortcutsPage from "./pages/SettingsPage/pages/ShortcutsPage";
+import GitPage from "./pages/GitPage";
+import GitHistoryPage from "./pages/GitPage/pages/HistoryPage";
+import GitBranchesPage from "./pages/GitPage/pages/BranchesPage";
+import GitMergeRequestsPage from "./pages/GitPage/pages/MergeRequestsPage";
+import GitMergeRequestDetailPage from "./pages/GitPage/pages/MergeRequestDetailPage";
+import GitConflictResolverPage from "./pages/GitPage/pages/ConflictResolverPage";
+import GitSettingsPage from "./pages/GitPage/pages/GitSettingsPage";
+import ViewPage from "./pages/ViewPage";
+
+const AdminPage = lazy(() => import("./pages/AdminPage"));
+const LoginAdminPage = lazy(() => import("./pages/AdminPage/LoginPage"));
+const DeleteAccountPage = lazy(() => import("./pages/DeleteAccountPage"));
+
+const PlaygroundPage = lazy(() => import("./pages/Playground"));
+
+const SignUp = lazy(() => import("./pages/SignUpPage"));
+
+const router = createBrowserRouter(
+  createRoutesFromElements([
+    <Route path="/playground/:id/">
+      <Route
+        path=""
+        element={
+          <ContextWrapper key={1}>
+            <PlaygroundAuthGate>
+              <PlaygroundPage />
+            </PlaygroundAuthGate>
+          </ContextWrapper>
+        }
+      />
+    </Route>,
+    <Route
+      path={ENABLE_CUSTOM_PARAM ? "/:customParam?" : "/"}
+      element={
+        <ContextWrapper key={2}>
+          <Outlet />
+        </ContextWrapper>
+      }
+    >
+      <Route path="" element={<AppInitPage />}>
+        <Route path="" element={<AppWrapperPage />}>
+          <Route
+            path=""
+            element={
+              <ProtectedRoute>
+                <Outlet />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="" element={<AppAuthenticatedPage />}>
+              <Route path="" element={<CustomDashboardWrapperPage />}>
+                <Route path="" element={<CollectionPage />}>
+                  <Route
+                    index
+                    element={<CustomNavigate replace to={"flows"} />}
+                  />
+                  {ENABLE_FILE_MANAGEMENT && (
+                    <Route path="assets">
+                      <Route
+                        index
+                        element={<CustomNavigate replace to="files" />}
+                      />
+                      <Route path="files" element={<FilesPage />} />
+                      {ENABLE_KNOWLEDGE_BASES && (
+                        <>
+                          <Route
+                            path="knowledge-bases"
+                            element={<KnowledgePage />}
+                          />
+                          <Route
+                            path="knowledge-bases/:sourceId/chunks"
+                            element={<SourceChunksPage />}
+                          />
+                        </>
+                      )}
+                    </Route>
+                  )}
+                  <Route
+                    path="flows/"
+                    element={<HomePage key="flows" type="flows" />}
+                  />
+                  <Route
+                    path="components/"
+                    element={<HomePage key="components" type="components" />}
+                  >
+                    <Route
+                      path="folder/:folderId"
+                      element={<HomePage key="components" type="components" />}
+                    />
+                  </Route>
+                  <Route
+                    path="all/"
+                    element={<HomePage key="flows" type="flows" />}
+                  >
+                    <Route
+                      path="folder/:folderId"
+                      element={<HomePage key="flows" type="flows" />}
+                    />
+                  </Route>
+                  <Route
+                    path="mcp/"
+                    element={<HomePage key="mcp" type="mcp" />}
+                  >
+                    <Route
+                      path="folder/:folderId"
+                      element={<HomePage key="mcp" type="mcp" />}
+                    />
+                  </Route>
+                </Route>
+                <Route path="settings" element={<SettingsPage />}>
+                  <Route
+                    index
+                    element={
+                      <CustomNavigate replace to={"global-variables"} />
+                    }
+                  />
+                  <Route
+                    path="global-variables"
+                    element={<GlobalVariablesPage />}
+                  />
+                  <Route
+                    path="model-providers"
+                    element={<ModelProvidersPage />}
+                  />
+                  <Route path="db-providers" element={<DBProvidersPage />} />
+                  <Route path="shortcuts" element={<ShortcutsPage />} />
+                </Route>
+                <Route path="git" element={<GitPage />}>
+                  <Route
+                    index
+                    element={<CustomNavigate replace to="history" />}
+                  />
+                  <Route path="history" element={<GitHistoryPage />} />
+                  <Route path="branches" element={<GitBranchesPage />} />
+                  <Route
+                    path="merge-requests"
+                    element={<GitMergeRequestsPage />}
+                  />
+                  <Route
+                    path="merge-requests/:iid"
+                    element={<GitMergeRequestDetailPage />}
+                  />
+                  <Route
+                    path="conflicts"
+                    element={<GitConflictResolverPage />}
+                  />
+                  <Route path="settings" element={<GitSettingsPage />} />
+                </Route>
+                {CustomRoutesStorePages()}
+                <Route path="account">
+                  <Route path="delete" element={<DeleteAccountPage />}></Route>
+                </Route>
+                <Route
+                  path="admin"
+                  element={
+                    <ProtectedAdminRoute>
+                      <AdminPage />
+                    </ProtectedAdminRoute>
+                  }
+                />
+              </Route>
+              <Route path="flow/:id/">
+                <Route path="" element={<CustomDashboardWrapperPage />}>
+                  <Route path="folder/:folderId/" element={<FlowPage />} />
+                  <Route path="" element={<FlowPage />} />
+                </Route>
+                <Route path="view" element={<ViewPage />} />
+              </Route>
+            </Route>
+          </Route>
+          <Route
+            path="login"
+            element={
+              <ProtectedLoginRoute>
+                <LoginPage />
+              </ProtectedLoginRoute>
+            }
+          />
+          <Route
+            path="signup"
+            element={
+              <ProtectedLoginRoute>
+                <SignUp />
+              </ProtectedLoginRoute>
+            }
+          />
+          <Route
+            path="login/admin"
+            element={
+              <ProtectedLoginRoute>
+                <LoginAdminPage />
+              </ProtectedLoginRoute>
+            }
+          />
+        </Route>
+      </Route>
+      <Route path="*" element={<CustomNavigate replace to="/" />} />
+    </Route>,
+  ]),
+  { basename: BASENAME || undefined },
+);
+
+export default router;

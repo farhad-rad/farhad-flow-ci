@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-boot-commands"
+description = "Splash boot snapshot + Restart backend"
+commands.allow = ["restart_backend", "get_boot_snapshot"]

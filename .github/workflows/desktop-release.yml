@@ -1,0 +1,360 @@
+# Wave 8 — Farhad Flow CI desktop release (unsigned NSIS + deb)
+#
+# Triggers:
+#   - workflow_dispatch: staff builds (smoke_only default true)
+#   - push tags desktop-v*: full freeze + publish release assets
+#   - pull_request (desktop/**): smoke_only packaging path
+#
+# Disk note: full uv freeze + Rust target is multi-GB. Prefer smoke_only=true
+# for PR/dispatch iteration; set smoke_only=false (or push a desktop-v* tag)
+# for staff release artifacts.
+#
+# Version SoT: desktop/src-tauri/tauri.conf.json (see desktop/VERSION_SYNC.md).
+# No interactive WebView required — Linux sidecar curl smoke only when full freeze.
+
+name: Desktop Release
+
+run-name: Desktop Release (${{ github.event_name }}) by @${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      smoke_only:
+        description: "Lighter freeze (SMOKE_ONLY=1). false = full staff payload (disk-heavy)."
+        required: false
+        type: boolean
+        default: true
+      skip_sidecar_smoke:
+        description: "Skip Linux sidecar health curl (even on full freeze)."
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "desktop-v*"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop-release.yml"
+
+concurrency:
+  group: desktop-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Node pin matches desktop/versions.lock.json
+  NODE_VERSION: "22.12.0"
+  # Rust pin matches desktop/versions.lock.json
+  RUST_VERSION: "1.90.0"
+
+jobs:
+  resolve:
+    name: Resolve inputs + version
+    runs-on: ubuntu-latest
+    outputs:
+      smoke_only: ${{ steps.cfg.outputs.smoke_only }}
+      smoke_only_env: ${{ steps.cfg.outputs.smoke_only_env }}
+      skip_sidecar_smoke: ${{ steps.cfg.outputs.skip_sidecar_smoke }}
+      desktop_version: ${{ steps.ver.outputs.desktop_version }}
+      is_release_tag: ${{ steps.cfg.outputs.is_release_tag }}
+      git_describe: ${{ steps.ver.outputs.git_describe }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve smoke_only / tag mode
+        id: cfg
+        run: |
+          set -euo pipefail
+          IS_TAG=false
+          if [[ "${{ github.ref }}" == refs/tags/desktop-v* ]]; then
+            IS_TAG=true
+          fi
+          echo "is_release_tag=${IS_TAG}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${IS_TAG}" == "true" ]]; then
+            # Tag always ships full staff payload
+            echo "smoke_only=false" >> "$GITHUB_OUTPUT"
+            echo "smoke_only_env=0" >> "$GITHUB_OUTPUT"
+            echo "skip_sidecar_smoke=false" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            SO="${{ inputs.smoke_only }}"
+            SKIP="${{ inputs.skip_sidecar_smoke }}"
+            echo "smoke_only=${SO}" >> "$GITHUB_OUTPUT"
+            if [[ "${SO}" == "true" ]]; then
+              echo "smoke_only_env=1" >> "$GITHUB_OUTPUT"
+            else
+              echo "smoke_only_env=0" >> "$GITHUB_OUTPUT"
+            fi
+            echo "skip_sidecar_smoke=${SKIP}" >> "$GITHUB_OUTPUT"
+          else
+            # PR / other: default smoke_only
+            echo "smoke_only=true" >> "$GITHUB_OUTPUT"
+            echo "smoke_only_env=1" >> "$GITHUB_OUTPUT"
+            echo "skip_sidecar_smoke=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Read desktop version + git describe
+        id: ver
+        run: |
+          set -euo pipefail
+          CONF_VER="$(python3 -c "import json; print(json.load(open('desktop/src-tauri/tauri.conf.json'))['version'])")"
+          PKG_VER="$(python3 -c "import json; print(json.load(open('desktop/package.json'))['version'])")"
+          CARGO_VER="$(grep -m1 '^version' desktop/src-tauri/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "tauri.conf=${CONF_VER} package.json=${PKG_VER} Cargo.toml=${CARGO_VER}"
+
+          if [[ "${CONF_VER}" != "${PKG_VER}" || "${CONF_VER}" != "${CARGO_VER}" ]]; then
+            echo "ERROR: desktop version mismatch — sync tauri.conf.json, package.json, Cargo.toml (see desktop/VERSION_SYNC.md)" >&2
+            exit 1
+          fi
+
+          if [[ "${{ github.ref }}" == refs/tags/desktop-v* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+            EXPECT="${TAG#desktop-v}"
+            if [[ "${CONF_VER}" != "${EXPECT}" ]]; then
+              echo "ERROR: tag ${TAG} expects version ${EXPECT}, tauri.conf has ${CONF_VER}" >&2
+              exit 1
+            fi
+          fi
+
+          DESCRIBE="$(git describe --tags --always --dirty 2>/dev/null || echo unknown)"
+          echo "desktop_version=${CONF_VER}" >> "$GITHUB_OUTPUT"
+          echo "git_describe=${DESCRIBE}" >> "$GITHUB_OUTPUT"
+          echo "Desktop package version: ${CONF_VER} (git describe: ${DESCRIBE})"
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: resolve
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    env:
+      SMOKE_ONLY: ${{ needs.resolve.outputs.smoke_only_env }}
+      NPM_CI: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            desktop/package-lock.json
+            src/frontend/package-lock.json
+            package-lock.json
+
+      - name: Install Rust ${{ env.RUST_VERSION }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache Cargo (Swatinem)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+          shared-key: desktop-tauri-${{ matrix.platform }}
+          cache-targets: true
+
+      - name: Cache python-build-standalone downloads
+        uses: actions/cache@v5
+        with:
+          path: desktop/.cache/python-standalone
+          key: py-standalone-${{ matrix.platform }}-${{ hashFiles('desktop/versions.lock.json') }}
+          restore-keys: |
+            py-standalone-${{ matrix.platform }}-
+
+      - name: Cache uv (Linux)
+        if: matrix.platform == 'linux'
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/uv
+          key: uv-linux-${{ hashFiles('uv.lock', 'pyproject.toml') }}
+          restore-keys: |
+            uv-linux-
+
+      - name: Cache uv (Windows)
+        if: matrix.platform == 'windows'
+        uses: actions/cache@v5
+        with:
+          path: ~\AppData\Local\uv\cache
+          key: uv-windows-${{ hashFiles('uv.lock', 'pyproject.toml') }}
+          restore-keys: |
+            uv-windows-
+
+      - name: Linux system deps (Tauri / WebKit)
+        if: matrix.platform == 'linux'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            jq
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Echo build mode
+        shell: bash
+        run: |
+          echo "platform=${{ matrix.platform }}"
+          echo "SMOKE_ONLY=${SMOKE_ONLY} (1=lighter freeze)"
+          echo "desktop_version=${{ needs.resolve.outputs.desktop_version }}"
+          echo "git_describe=${{ needs.resolve.outputs.git_describe }}"
+          echo "is_release_tag=${{ needs.resolve.outputs.is_release_tag }}"
+
+      # ---------- Linux ----------
+      - name: Build Ubuntu .deb
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x desktop/scripts/*.sh
+          ./desktop/scripts/build-ubuntu.sh
+
+      - name: Assert MANIFEST.sha256 (Linux)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f desktop/resources/MANIFEST.sha256 || {
+            echo "ERROR: missing desktop/resources/MANIFEST.sha256" >&2
+            exit 1
+          }
+          echo "MANIFEST.sha256 present ($(wc -l < desktop/resources/MANIFEST.sha256) lines)"
+          head -5 desktop/resources/MANIFEST.sha256
+
+      - name: Sidecar health curl smoke (Linux, full freeze only)
+        if: matrix.platform == 'linux' && needs.resolve.outputs.smoke_only != 'true' && needs.resolve.outputs.skip_sidecar_smoke != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./desktop/scripts/ci-sidecar-health-smoke.sh
+
+      - name: Upload Ubuntu artifacts
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: farhad-flow-ci-ubuntu-amd64-${{ needs.resolve.outputs.desktop_version }}
+          path: |
+            desktop/dist/farhad-flow-ci_${{ needs.resolve.outputs.desktop_version }}_amd64.deb
+            desktop/dist/FarhadFlowCI-desktop-v${{ needs.resolve.outputs.desktop_version }}-ubuntu-amd64.deb
+          if-no-files-found: error
+          retention-days: 14
+
+      # ---------- Windows ----------
+      - name: Build Windows NSIS
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $args = @()
+          if ($env:SMOKE_ONLY -eq "1") { $args += "-SmokeOnly" }
+          & .\desktop\scripts\build-windows.ps1 @args
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Assert MANIFEST.sha256 (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $m = "desktop\resources\MANIFEST.sha256"
+          if (-not (Test-Path $m)) {
+            Write-Error "ERROR: missing desktop/resources/MANIFEST.sha256"
+            exit 1
+          }
+          Write-Host "MANIFEST.sha256 present ($((Get-Content $m).Count) lines)"
+          Get-Content $m -TotalCount 5
+
+      - name: Upload Windows artifacts
+        if: matrix.platform == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: farhad-flow-ci-windows-nsis-${{ needs.resolve.outputs.desktop_version }}
+          path: |
+            desktop/dist/FarhadFlowCI_${{ needs.resolve.outputs.desktop_version }}_x64-setup.exe
+            desktop/dist/FarhadFlowCI-desktop-v${{ needs.resolve.outputs.desktop_version }}-windows-nsis.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    name: Publish GitHub Release (desktop-v*)
+    needs: [resolve, build]
+    if: needs.resolve.outputs.is_release_tag == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download Ubuntu artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: farhad-flow-ci-ubuntu-amd64-${{ needs.resolve.outputs.desktop_version }}
+          path: release-assets
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: farhad-flow-ci-windows-nsis-${{ needs.resolve.outputs.desktop_version }}
+          path: release-assets
+
+      - name: List release assets
+        run: ls -la release-assets/
+
+      - name: Create / update unsigned release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Farhad Flow CI Desktop ${{ needs.resolve.outputs.desktop_version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            Unsigned staff-only desktop installers for **Farhad Flow CI** `${{ needs.resolve.outputs.desktop_version }}`.
+
+            - Package version SoT: `desktop/src-tauri/tauri.conf.json` (see `desktop/VERSION_SYNC.md`)
+            - git describe at build: `${{ needs.resolve.outputs.git_describe }}`
+            - **Not code-signed** — Windows Defender / SmartScreen may warn
+            - No auto-updater — reinstall to upgrade
+
+            ### Assets
+            - `FarhadFlowCI-desktop-v${{ needs.resolve.outputs.desktop_version }}-windows-nsis.exe` (NSIS)
+            - `FarhadFlowCI-desktop-v${{ needs.resolve.outputs.desktop_version }}-ubuntu-amd64.deb` (Ubuntu amd64)
+            - Canonical: `FarhadFlowCI_${{ needs.resolve.outputs.desktop_version }}_x64-setup.exe`, `farhad-flow-ci_${{ needs.resolve.outputs.desktop_version }}_amd64.deb`
+          files: |
+            release-assets/FarhadFlowCI_${{ needs.resolve.outputs.desktop_version }}_x64-setup.exe
+            release-assets/FarhadFlowCI-desktop-v${{ needs.resolve.outputs.desktop_version }}-windows-nsis.exe
+            release-assets/farhad-flow-ci_${{ needs.resolve.outputs.desktop_version }}_amd64.deb
+            release-assets/FarhadFlowCI-desktop-v${{ needs.resolve.outputs.desktop_version }}-ubuntu-amd64.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

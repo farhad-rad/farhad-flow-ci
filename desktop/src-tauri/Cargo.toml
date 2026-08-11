@@ -1,0 +1,38 @@
+[package]
+name = "farhad-flow-ci"
+version = "0.1.0"
+description = "Farhad Flow CI — Tauri desktop shell"
+authors = ["Zeenome"]
+edition = "2021"
+rust-version = "1.90"
+
+[lib]
+name = "farhad_flow_ci_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+# Version line is independent of the `tauri` crate (latest stable is 2.6.x).
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.5", features = [] }
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+directories = "5"
+thiserror = "2"
+url = "2"
+ureq = { version = "2.12", default-features = false }
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true

@@ -1,0 +1,28 @@
+# Farhad Flow CI — desktop (Tauri)
+
+node_modules/
+dist/
+splash/.DS_Store
+.cache/
+
+src-tauri/target/
+src-tauri/gen/
+src-tauri/WixTools/
+
+*.log
+.DS_Store
+
+# Wave 2–3 build caches + frozen payload (CI regenerates; keep placeholders/.gitkeep)
+.cache/
+resources/python/**
+!resources/python/.gitkeep
+resources/venv/**
+!resources/venv/.gitkeep
+resources/frontend/**
+!resources/frontend/.gitkeep
+resources/git/**
+!resources/git/.gitkeep
+!resources/git/.gitignore
+resources/MANIFEST.sha256
+resources/run-langflow.sh
+resources/run-langflow.ps1

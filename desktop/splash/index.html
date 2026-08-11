@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Farhad Flow CI</title>
+    <style>
+      :root {
+        --bg0: #070b14;
+        --bg1: #0b1220;
+        --fg: #f4f7fb;
+        --muted: #9aa8bc;
+        --accent: #7eb6ff;
+        --line: rgba(244, 247, 251, 0.12);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: radial-gradient(1200px 600px at 50% -10%, #15233a 0%, var(--bg0) 55%);
+        color: var(--fg);
+        font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      }
+      body {
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+      }
+      .stage {
+        width: min(420px, 92vw);
+        text-align: center;
+        padding: 2rem 1.25rem 1.5rem;
+      }
+      .logo {
+        width: min(220px, 72vw);
+        margin: 0 auto 1.35rem;
+        color: var(--fg);
+        animation: float 3.2s ease-in-out infinite;
+      }
+      .logo img {
+        width: 100%;
+        height: auto;
+        display: block;
+        filter: brightness(0) invert(1);
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.55rem;
+        font-weight: 650;
+        letter-spacing: 0.01em;
+      }
+      .brand {
+        margin: 0.45rem 0 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+      .status-wrap {
+        position: relative;
+        margin: 1.6rem 0 0.75rem;
+        min-height: 1.55rem;
+        overflow: hidden;
+      }
+      .status {
+        margin: 0;
+        color: var(--fg);
+        font-size: 0.95rem;
+        line-height: 1.45;
+        transition:
+          opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+          transform 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+          filter 0.55s ease;
+        will-change: opacity, transform, filter;
+      }
+      .status.is-leaving {
+        opacity: 0;
+        transform: translateY(-10px);
+        filter: blur(2px);
+      }
+      .status.is-entering {
+        opacity: 0;
+        transform: translateY(12px);
+        filter: blur(3px);
+      }
+      .status.is-visible {
+        opacity: 1;
+        transform: translateY(0);
+        filter: blur(0);
+      }
+      .bar {
+        height: 3px;
+        width: 100%;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+      }
+      .bar > i {
+        display: block;
+        height: 100%;
+        width: 40%;
+        background: linear-gradient(90deg, transparent, var(--accent), transparent);
+        animation: sweep 1.4s ease-in-out infinite;
+      }
+      .bar.paused > i {
+        animation: none;
+        width: 100%;
+        background: rgba(255, 155, 155, 0.45);
+      }
+      .meta {
+        margin-top: 1.1rem;
+        color: var(--muted);
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .version {
+        margin-top: 0.45rem;
+        color: var(--muted);
+        font-size: 0.75rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .crumb {
+        display: none;
+        margin-top: 0.9rem;
+        text-align: left;
+        color: var(--muted);
+        font-size: 0.78rem;
+        line-height: 1.4;
+        padding: 0.65rem 0.75rem;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.25);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .crumb.visible {
+        display: block;
+      }
+      .actions {
+        display: none;
+        margin-top: 1.1rem;
+      }
+      .actions.visible {
+        display: block;
+      }
+      button {
+        appearance: none;
+        border: 1px solid var(--line);
+        background: linear-gradient(160deg, #1a2a44, var(--bg1));
+        color: var(--fg);
+        font: inherit;
+        font-size: 0.9rem;
+        padding: 0.55rem 1.1rem;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: wait;
+      }
+      .error {
+        color: #ff9b9b;
+      }
+      @keyframes sweep {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(280%);
+        }
+      }
+      @keyframes float {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-6px);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .logo {
+          animation: none;
+        }
+        .status {
+          transition: opacity 0.2s ease;
+        }
+        .status.is-leaving,
+        .status.is-entering {
+          transform: none;
+          filter: none;
+        }
+        .bar > i {
+          animation-duration: 2.4s;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stage" role="status" aria-live="polite">
+      <div class="logo" aria-hidden="true">
+        <img src="./assets/zeenome-logo.svg" alt="" />
+      </div>
+      <h1>Farhad Flow CI</h1>
+      <p class="brand">Zeenome · desktop shell</p>
+      <div class="status-wrap">
+        <p id="status" class="status is-visible">warming up…</p>
+      </div>
+      <div id="bar" class="bar" aria-hidden="true"><i></i></div>
+      <p id="meta" class="meta">Starting up</p>
+      <p class="version">Version <span id="version">…</span></p>
+      <pre id="crumb" class="crumb"></pre>
+      <div id="actions" class="actions">
+        <button id="restart" type="button">Restart backend</button>
+      </div>
+    </main>
+    <script>
+      const statusEl = document.getElementById("status");
+      const metaEl = document.getElementById("meta");
+      const versionEl = document.getElementById("version");
+      const crumbEl = document.getElementById("crumb");
+      const actionsEl = document.getElementById("actions");
+      const restartBtn = document.getElementById("restart");
+      const barEl = document.getElementById("bar");
+
+      /** Soft boot lines — rotated while shell warms; Error shows real message instead. */
+      const BOOT_LINES = [
+        "warming up…",
+        "wrapping things up…",
+        "almost there…",
+        "this might take a few seconds…",
+        "stirring the coffee…",
+        "finding a quiet port…",
+        "polishing the glass…",
+        "waking the sidecar…",
+        "untangling cables…",
+        "counting electrons…",
+        "brewing the backend…",
+        "aligning the stars…",
+        "checking under the couch…",
+        "spinning up quietly…",
+        "making room for flows…",
+        "calibrating patience…",
+        "tying shoelaces…",
+        "loading good vibes…",
+        "warming the cache…",
+        "asking politely…",
+        "negotiating with SQLite…",
+        "smoothing the edges…",
+        "drawing the curtains…",
+        "hum of servers approaching…",
+        "packing a tiny suitcase…",
+        "shaking hands with git…",
+        "unfolding the map…",
+        "dusting off the dashboard…",
+        "tuning the dials…",
+        "patience is a feature…",
+        "nearly through the tunnel…",
+        "stacking the building blocks…",
+        "whispering to Python…",
+        "lighting the runway…",
+        "syncing the heartbeat…",
+        "warming cold starts…",
+        "one more moment…",
+        "tying the last knot…",
+        "checking twice…",
+        "booting with care…",
+        "settling into place…",
+        "preparing the canvas…",
+        "soft-landing soon…",
+        "keeping things tidy…",
+        "almost ready to paint…",
+        "finishing the handshake…",
+        "holding the door…",
+        "making it cozy…",
+        "last stretch…",
+        "here we go…",
+      ].map((s) => s.replace(/^\s+/, ""));
+
+      const ROTATE_MS = 2800;
+      let rotateTimer = null;
+      let rotating = false;
+      let lineOrder = [];
+      let lineIndex = 0;
+      let animating = false;
+      let forcedText = null;
+
+      function shuffle(arr) {
+        const a = arr.slice();
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const t = a[i];
+          a[i] = a[j];
+          a[j] = t;
+        }
+        return a;
+      }
+
+      function refillOrder() {
+        lineOrder = shuffle(BOOT_LINES);
+        lineIndex = 0;
+      }
+
+      function nextLine() {
+        if (!lineOrder.length || lineIndex >= lineOrder.length) refillOrder();
+        return lineOrder[lineIndex++];
+      }
+
+      function setStatusText(text, { animate = true } = {}) {
+        if (typeof text !== "string") return;
+        if (!animate || text === statusEl.textContent) {
+          statusEl.textContent = text;
+          statusEl.classList.remove("is-leaving", "is-entering");
+          statusEl.classList.add("is-visible");
+          return;
+        }
+        if (animating) {
+          statusEl.textContent = text;
+          statusEl.classList.remove("is-leaving", "is-entering");
+          statusEl.classList.add("is-visible");
+          return;
+        }
+        animating = true;
+        statusEl.classList.remove("is-visible", "is-entering");
+        statusEl.classList.add("is-leaving");
+        window.setTimeout(() => {
+          statusEl.textContent = text;
+          statusEl.classList.remove("is-leaving");
+          statusEl.classList.add("is-entering");
+          // Force reflow so enter transition runs
+          void statusEl.offsetWidth;
+          statusEl.classList.remove("is-entering");
+          statusEl.classList.add("is-visible");
+          animating = false;
+        }, 280);
+      }
+
+      function setMeta(stage) {
+        if (typeof stage !== "string" || !stage) return;
+        if (stage === "Error") {
+          metaEl.textContent = "Boot Stage · Error";
+          return;
+        }
+        if (stage === "SoftReconnect") {
+          metaEl.textContent = "Reconnecting";
+          return;
+        }
+        metaEl.textContent = "Starting up";
+      }
+
+      function startRotator() {
+        if (rotating) return;
+        rotating = true;
+        forcedText = null;
+        refillOrder();
+        setStatusText(nextLine(), { animate: false });
+        rotateTimer = window.setInterval(() => {
+          if (!rotating || forcedText) return;
+          setStatusText(nextLine(), { animate: true });
+        }, ROTATE_MS);
+      }
+
+      function stopRotator() {
+        rotating = false;
+        if (rotateTimer) {
+          window.clearInterval(rotateTimer);
+          rotateTimer = null;
+        }
+      }
+
+      function setErrorUi(isError) {
+        statusEl.classList.toggle("error", isError);
+        barEl.classList.toggle("paused", isError);
+      }
+
+      function applySnapshot(snap) {
+        if (!snap || typeof snap !== "object") return;
+        const stage = snap.stage || "";
+        setMeta(stage);
+        const show = Boolean(snap.show_restart);
+        actionsEl.classList.toggle("visible", show);
+        if (snap.last_crumb_summary) {
+          crumbEl.textContent = snap.last_crumb_summary;
+          crumbEl.classList.add("visible");
+        } else {
+          crumbEl.textContent = "";
+          crumbEl.classList.remove("visible");
+        }
+
+        if (stage === "Error") {
+          stopRotator();
+          setErrorUi(true);
+          forcedText = snap.message || "Boot failed. See logs.";
+          setStatusText(forcedText, { animate: true });
+          return;
+        }
+
+        setErrorUi(false);
+        // Keep rotating witty lines for all non-error boot stages.
+        startRotator();
+      }
+
+      window.__farhadBoot = {
+        setStatus(text, stage) {
+          applySnapshot({ message: text, stage: stage || "" });
+        },
+        setVersion(v) {
+          if (typeof v === "string" && versionEl) versionEl.textContent = v;
+        },
+        apply(snap) {
+          applySnapshot(snap);
+        },
+      };
+
+      if (typeof window.__FARHAD_FLOW_CI_VERSION__ === "string") {
+        window.__farhadBoot.setVersion(window.__FARHAD_FLOW_CI_VERSION__);
+      }
+
+      startRotator();
+      setMeta("Paths");
+
+      restartBtn.addEventListener("click", async () => {
+        restartBtn.disabled = true;
+        try {
+          if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+            await window.__TAURI__.core.invoke("restart_backend");
+          } else if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
+            await window.__TAURI_INTERNALS__.invoke("restart_backend");
+          }
+        } catch (e) {
+          stopRotator();
+          setErrorUi(true);
+          setStatusText(String(e), { animate: true });
+          setMeta("Error");
+        } finally {
+          restartBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
