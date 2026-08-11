@@ -149,7 +149,7 @@ jobs:
 
       - name: Upload Accessibility Reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ibm-a11y-reports-${{ github.run_attempt }}
           path: src/frontend/coverage/accessibility-reports
