@@ -58,7 +58,7 @@ jobs:
           echo "Scanning ref: $REF"
 
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.resolve_ref.outputs.ref }}
 
