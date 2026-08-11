@@ -394,7 +394,7 @@ jobs:
       - name: Upload Test Results
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: blob-report-${{ runner.os }}-${{ matrix.shardIndex }}
           path: src/frontend/blob-report
@@ -404,7 +404,7 @@ jobs:
       - name: Upload Playwright Coverage Artifact
         if: always() && hashFiles('src/frontend/coverage/playwright/**') != ''
         continue-on-error: true
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-coverage-${{ matrix.shardIndex }}
           path: src/frontend/coverage/playwright
@@ -466,7 +466,7 @@ jobs:
       - name: Upload HTML report
 
         if: ${{ steps.should_merge_reports.outputs.should_merge_reports == 'true' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: html-report--attempt-${{ github.run_attempt }}
           path: playwright-report
@@ -511,7 +511,7 @@ jobs:
           npx playwright@1.60.0 merge-reports --reporter json ./all-blob-reports
 
       - name: Upload flaky report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: flaky-report--attempt-${{ github.run_attempt }}
           path: flaky-report.json
