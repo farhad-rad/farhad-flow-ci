@@ -1,8 +1,14 @@
-# Wave 6 — Windows NSIS packaging orchestrator
+﻿# Wave 6 - Windows NSIS packaging orchestrator
 #
-# FE bake → python freeze → vendor MinGit → tauri build (nsis) → rename setup.exe
+# FE bake -> python freeze -> vendor MinGit -> verify payload patches -> tauri build (nsis)
 #
-# Prerequisites (Windows x64) — auto-checked/installed at start unless -SkipDepInstall:
+# Payload verify (verify-payload-windows.ps1) gates every NSIS build:
+#   - default.env fast-startup keys
+#   - _langflow_boot.py onnxruntime DLL preload
+#   - vendored MSVC runtime + frozen lfx startup patches
+#   - onnx/markitdown import smoke (full freeze only)
+#
+# Prerequisites (Windows x64) - auto-checked/installed at start unless -SkipDepInstall:
 #   - Rust (versions.lock.json pin) via rustup
 #   - MSVC link.exe (VS 2022 Build Tools C++ workload) via winget
 #   - Node 22.12+ + npm via winget
@@ -30,13 +36,18 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# PS 7.3+: ignore native-stderr-as-error. PS 7.2 lacks this preference, so native
+# calls that chatter on stderr (rustup/npm) use Invoke-QuietNative below.
+if ($PSVersionTable.PSVersion -ge [version]"7.3") {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DesktopDir = (Resolve-Path (Join-Path $ScriptDir "..")).Path
 $RepoRoot = (Resolve-Path (Join-Path $DesktopDir "..")).Path
 $SrcTauri = Join-Path $DesktopDir "src-tauri"
 $DistDir = Join-Path $DesktopDir "dist"
 
-Write-Host "======== Farhad Flow CI — Windows NSIS build ========"
+Write-Host "======== Farhad Flow CI - Windows NSIS build ========"
 Write-Host "desktop: $DesktopDir"
 
 # ---------------------------------------------------------------------------
@@ -46,6 +57,30 @@ function Refresh-SessionPath {
     $machine = [Environment]::GetEnvironmentVariable("Path", "Machine")
     $user = [Environment]::GetEnvironmentVariable("Path", "User")
     $env:Path = (@($machine, $user) | Where-Object { $_ }) -join ";"
+}
+
+# Run a native exe without PS 7.2 treating stderr info lines as terminating errors.
+function Invoke-QuietNative {
+    param(
+        [Parameter(Mandatory = $true)][scriptblock]$Script,
+        [switch]$IgnoreExitCode
+    )
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $Script 2>&1 | ForEach-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                Write-Host $_.ToString()
+            } else {
+                Write-Host $_
+            }
+        }
+        if (-not $IgnoreExitCode -and $LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+            throw "native command failed (exit $LASTEXITCODE)"
+        }
+    } finally {
+        $ErrorActionPreference = $prev
+    }
 }
 
 function Test-ExeOnPath([string]$Name) {
@@ -67,7 +102,7 @@ function Invoke-WingetInstall {
         [string]$Override = ""
     )
     if (-not (Test-ExeOnPath "winget")) {
-        throw "winget missing — install App Installer from Microsoft Store, then re-run."
+        throw "winget missing - install App Installer from Microsoft Store, then re-run."
     }
     $args = @(
         "install", "--id", $Id,
@@ -156,7 +191,7 @@ function Ensure-BuildPrereqs {
         $haveRust = (& rustc --version 2>$null)
         Write-Host "    rustc: $haveRust"
         if ($haveRust -notmatch [regex]::Escape($rustPin)) {
-            Write-Host "    WARN: rustc not exactly $rustPin — will try rustup toolchain install"
+            Write-Host "    WARN: rustc not exactly $rustPin - will try rustup toolchain install"
             $needRustInstall = $true
         }
     }
@@ -180,18 +215,15 @@ function Ensure-BuildPrereqs {
             }
         }
         Write-Host "    rustup toolchain install $rustPin"
-        & rustup toolchain install $rustPin
-        if ($LASTEXITCODE -ne 0) { throw "rustup toolchain install failed" }
-        & rustup default $rustPin
-        if ($LASTEXITCODE -ne 0) { throw "rustup default failed" }
-        & rustup target add x86_64-pc-windows-msvc
-        if ($LASTEXITCODE -ne 0) { throw "rustup target add failed" }
+        Invoke-QuietNative { & rustup toolchain install $rustPin }
+        Invoke-QuietNative { & rustup default $rustPin }
+        Invoke-QuietNative { & rustup target add x86_64-pc-windows-msvc }
         Refresh-SessionPath
         Write-Host "    rustc: $(& rustc --version)"
     } else {
         # Ensure windows-msvc target even when rustc already present
         if (Test-ExeOnPath "rustup") {
-            & rustup target add x86_64-pc-windows-msvc 2>$null | Out-Null
+            Invoke-QuietNative -IgnoreExitCode { & rustup target add x86_64-pc-windows-msvc }
         }
     }
 
@@ -200,7 +232,7 @@ function Ensure-BuildPrereqs {
         if (-not $AllowInstall) {
             throw "MSVC link.exe missing. Install VS 2022 Build Tools (C++), or drop -SkipDepInstall."
         }
-        Write-Host "    installing VS 2022 Build Tools (VCTools) via winget — may need admin..."
+        Write-Host "    installing VS 2022 Build Tools (VCTools) via winget - may need admin..."
         $override = "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
         try {
             Invoke-WingetInstall -Id "Microsoft.VisualStudio.2022.BuildTools" -Override $override
@@ -261,7 +293,7 @@ function Ensure-BuildPrereqs {
             try {
                 Invoke-WingetInstall -Id "Microsoft.EdgeWebView2Runtime"
             } catch {
-                Write-Host "    WARN: WebView2 install failed — continue; staff NSIS can bootstrap. $_"
+                Write-Host "    WARN: WebView2 install failed - continue; staff NSIS can bootstrap. $_"
             }
         } else {
             Write-Host "    WARN: WebView2 Runtime not detected (-SkipDepInstall)."
@@ -293,7 +325,7 @@ if (-not $SkipPayload) {
     & (Join-Path $ScriptDir "write-manifest.ps1")
     if ($LASTEXITCODE -ne 0) { throw "write-manifest.ps1 failed" }
 } else {
-    Write-Host "==> SkipPayload — using existing desktop/resources/"
+    Write-Host "==> SkipPayload - using existing desktop/resources/"
     $crit = @(
         (Join-Path $DesktopDir "resources\python"),
         (Join-Path $DesktopDir "resources\frontend\index.html"),
@@ -305,6 +337,17 @@ if (-not $SkipPayload) {
         }
     }
 }
+
+# --- 1b) Verify startup + DLL patches (fail fast before long NSIS compile) ---
+Write-Host "==> verify payload patches (startup env, lfx, onnx boot)"
+$verifyScript = Join-Path $ScriptDir "verify-payload-windows.ps1"
+$resourcesDir = Join-Path $DesktopDir "resources"
+if ($SmokeOnly) {
+    & $verifyScript -ResourcesDir $resourcesDir -SmokeOnly
+} else {
+    & $verifyScript -ResourcesDir $resourcesDir
+}
+if ($LASTEXITCODE -ne 0) { throw "verify-payload-windows.ps1 failed — rebuild payload (no -SkipPayload) or refresh resources/" }
 
 # --- 2) Read version from tauri.conf.json ---
 $ConfPath = Join-Path $SrcTauri "tauri.conf.json"
@@ -331,12 +374,18 @@ try {
 }
 
 # --- 4) Locate + rename setup.exe ---
-# Tauri default: "{productName}_{version}_x64-setup.exe" → "Farhad Flow CI_0.1.0_x64-setup.exe"
+# Tauri default: "{productName}_{version}_x64-setup.exe" -> "Farhad Flow CI_0.1.0_x64-setup.exe"
 # Canonical: FarhadFlowCI_X.Y.Z_x64-setup.exe
 $NsisOutCandidates = @(
     (Join-Path $SrcTauri "target\x86_64-pc-windows-msvc\release\bundle\nsis"),
     (Join-Path $SrcTauri "target\release\bundle\nsis")
 )
+if ($env:CARGO_TARGET_DIR) {
+    $NsisOutCandidates = @(
+        (Join-Path $env:CARGO_TARGET_DIR "release\bundle\nsis"),
+        (Join-Path $env:CARGO_TARGET_DIR "x86_64-pc-windows-msvc\release\bundle\nsis")
+    ) + $NsisOutCandidates
+}
 $NsisDir = $null
 foreach ($c in $NsisOutCandidates) {
     if (Test-Path $c) { $NsisDir = $c; break }

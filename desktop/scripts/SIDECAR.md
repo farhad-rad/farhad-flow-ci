@@ -48,10 +48,19 @@ LANGFLOW_GIT_AUTO_COMMIT=false
 LANGFLOW_SAVE_DB_IN_CONFIG_DIR=true
 LANGFLOW_HOST=127.0.0.1
 LANGFLOW_PORT=7860
+DO_NOT_TRACK=true
+LANGFLOW_TELEMETRY_WRITER_ENABLED=false
+LANGFLOW_SKIP_EXTENSION_COMPONENTS=true
+LANGFLOW_CREATE_STARTER_PROJECTS=false
+LANGFLOW_UPDATE_STARTER_PROJECTS=false
+LANGFLOW_LAZY_LOAD_COMPONENTS=true
+LANGFLOW_AGENTIC_EXPERIENCE=false
+ENABLE_LANGFLOW_STORE=false
 ```
 
 Shell also **forces** at spawn:
 - `LANGFLOW_GIT_AUTO_COMMIT=false` (manual History commit only)
+- `LANGFLOW_UPDATE_STARTER_PROJECTS=false` (never wipe/rebuild starters each boot)
 - `LANGFLOW_SAVE_DB_IN_CONFIG_DIR=true` (SQLite under config_dir; install tree is read-only)
 - `LANGFLOW_CONFIG_DIR` to the resolved user config path
 
@@ -69,11 +78,16 @@ Optional: `LANGFLOW_CONFIG_DIR` overrides platformdirs config root.
 
 Before spawn, prepend to **process** `PATH`:
 
-1. `{resources}\python`
+1. `{resources}\python` (includes vendored `msvcp140*.dll` / `vcruntime140*.dll` from `vendor-msvc-runtime.ps1`)
 2. `{resources}\python\DLLs` (if present)
 3. `{resources}\venv\Scripts`
+4. `{resources}\venv\Lib\site-packages\pywin32_system32` (+ `win32`)
+5. `{resources}\venv\Lib\site-packages\onnxruntime\capi` (magika / markitdown)
+6. bundled git (`cmd`, `usr\bin`, `mingw64\bin`)
 
-Native wheels (`.pyd`) and `python3XX.dll` resolve via DLL search order. Missing these → import failures on numpy/etc.
+Native wheels (`.pyd`) and `python3XX.dll` resolve via DLL search order. Missing these → import failures on numpy/onnxruntime/etc. Do **not** rely on a system VC++ redistributable for staff installs.
+
+**onnxruntime / markitdown:** Some dev PCs ship an older `onnxruntime.dll` in `System32` or on `PATH`. The sidecar boot script (`resources/_langflow_boot.py`) preloads the bundled `onnxruntime.dll` from `venv/.../onnxruntime/capi` before Langflow imports so magika/markitdown and custom components that pull them in keep working.
 
 ### Linux (`LD_LIBRARY_PATH` / RPATH)
 
@@ -110,9 +124,21 @@ Portable git (`resources/git`) — Wave 3 done. Sidecar-only PATH / `GIT_EXEC_PA
 # Windows runner
 .\desktop\scripts\fetch-python-standalone.ps1 -Target windows
 .\desktop\scripts\bake-frontend.sh   # via Git Bash, or pre-bake FE artifact
-.\desktop\scripts\freeze-venv.ps1
-.\desktop\scripts\build-payload-windows.ps1
+.\desktop\scripts\freeze-venv.ps1    # ends with verify-payload-windows.ps1
+.\desktop\scripts\build-payload-windows.ps1   # verify again before NSIS
 ```
+
+**NSIS gate (`verify-payload-windows.ps1`)** — fails the build if startup/DLL patches are missing:
+
+| Check | What |
+|-------|------|
+| `env/default.env` | `SKIP_EXTENSION`, `CREATE/UPDATE_STARTER=false`, `LAZY_LOAD`, `AGENTIC_EXPERIENCE=false` |
+| `_langflow_boot.py` | onnxruntime `ctypes.CDLL` preload (UTF-8, no BOM) |
+| `python/msvcp140.dll` | vendored MSVC runtime |
+| frozen `lfx/interface/components.py` | extension skip + lazy-load base-path guard |
+| import smoke | markitdown + onnxruntime under inherited PATH (full freeze only) |
+
+`freeze-venv.ps1` copies workspace `src/lfx/.../components.py` into site-packages after `uv sync`. Rust spawn forces (`UPDATE_STARTER=false`, `SKIP_EXTENSION=true`) ship in `FarhadFlowCI.exe` from `sidecar.rs`.
 
 Staff/CI full freeze (exact):
 

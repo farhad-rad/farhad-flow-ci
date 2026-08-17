@@ -1,4 +1,4 @@
-# Wave 2 — download python-build-standalone into desktop/resources/python/
+﻿# Wave 2 - download python-build-standalone into desktop/resources/python/
 #
 # Usage (PowerShell):
 #   .\desktop\scripts\fetch-python-standalone.ps1 [-Target windows|linux]
@@ -21,7 +21,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-
+if ($null -ne (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue)) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DesktopDir = (Resolve-Path (Join-Path $ScriptDir "..")).Path
 $RepoRoot = (Resolve-Path (Join-Path $DesktopDir "..")).Path
@@ -70,7 +72,7 @@ try {
     Write-Host "    WARN: no verified .sha256 sidecar ($($_.Exception.Message))"
 }
 
-Write-Host "==> extract → $PythonRes"
+Write-Host "==> extract -> $PythonRes"
 if (Test-Path $PythonRes) {
     Remove-Item -Recurse -Force $PythonRes
 }

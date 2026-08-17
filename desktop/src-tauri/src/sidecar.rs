@@ -18,6 +18,11 @@ use crate::config::AppPaths;
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Handle for the Python/langflow sidecar. Shared via `AppState`.
 #[derive(Debug, Default)]
@@ -154,22 +159,43 @@ impl SidecarHandle {
             .to_str()
             .ok_or_else(|| SidecarError::InvalidPath(plan.frontend_path.clone()))?;
 
+        // Prefer relocatable boot script: `site.addsitedir` processes pywin32 .pth
+        // (plain `PYTHONPATH` + `python -m langflow` does not → ModuleNotFoundError: pywintypes).
+        let boot = paths.langflow_boot_script();
+        let use_boot = boot.is_file();
+
         let mut cmd = Command::new(&plan.python);
-        cmd.args([
-            "-m",
-            "langflow",
-            "run",
-            "--host",
-            &plan.host,
-            "--port",
-            &port.to_string(),
-            "--frontend-path",
-            frontend,
-        ])
-        .current_dir(&plan.working_dir)
-        .stdout(Stdio::from(log))
-        .stderr(Stdio::from(log_err))
-        .stdin(Stdio::null());
+        if use_boot {
+            let boot_s = boot
+                .to_str()
+                .ok_or_else(|| SidecarError::InvalidPath(boot.clone()))?;
+            cmd.args([
+                boot_s,
+                "run",
+                "--host",
+                &plan.host,
+                "--port",
+                &port.to_string(),
+                "--frontend-path",
+                frontend,
+            ]);
+        } else {
+            cmd.args([
+                "-m",
+                "langflow",
+                "run",
+                "--host",
+                &plan.host,
+                "--port",
+                &port.to_string(),
+                "--frontend-path",
+                frontend,
+            ]);
+        }
+        cmd.current_dir(&plan.working_dir)
+            .stdout(Stdio::from(log))
+            .stderr(Stdio::from(log_err))
+            .stdin(Stdio::null());
 
         apply_sidecar_env(&mut cmd, paths, port)?;
 
@@ -184,6 +210,13 @@ impl SidecarHandle {
                     Ok(())
                 });
             }
+        }
+
+        #[cfg(windows)]
+        {
+            // Hide console for python.exe / taskkill children (pythonw alone is not enough
+            // if any subprocess is a console binary).
+            cmd.creation_flags(CREATE_NO_WINDOW);
         }
 
         #[cfg(windows)]
@@ -404,6 +437,10 @@ fn apply_sidecar_env(cmd: &mut Command, paths: &AppPaths, port: u16) -> Result<(
     env_map.insert("LANGFLOW_PORT".into(), port.to_string());
     // Staff product: never auto-commit on Save (manual History commit only).
     env_map.insert("LANGFLOW_GIT_AUTO_COMMIT".into(), "false".into());
+    // Never wipe/rebuild starter projects on every boot (upstream default is true).
+    env_map.insert("LANGFLOW_UPDATE_STARTER_PROJECTS".into(), "false".into());
+    // Frozen venvs: pip extension.json scan is ~40–50s and unused for this product.
+    env_map.insert("LANGFLOW_SKIP_EXTENSION_COMPONENTS".into(), "true".into());
     env_map.insert(
         "LANGFLOW_CONFIG_DIR".into(),
         paths.config_dir.to_string_lossy().into_owned(),
@@ -732,6 +769,7 @@ fn kill_orphan_pid(pid: u32, pgid: Option<i32>) {
             .args(["/F", "/T", "/PID", &pid.to_string()])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
             .status();
     }
 }
@@ -889,6 +927,10 @@ mod windows_job {
     pub struct JobObject {
         handle: HANDLE,
     }
+
+    // HANDLE is a raw pointer in windows-sys; job object handles are safe to move across threads.
+    unsafe impl Send for JobObject {}
+    unsafe impl Sync for JobObject {}
 
     impl JobObject {
         pub fn create() -> io::Result<Self> {

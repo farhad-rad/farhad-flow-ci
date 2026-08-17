@@ -724,15 +724,20 @@ async def _determine_loading_strategy(settings_service: "SettingsService") -> di
         Dictionary containing loaded component types and templates
     """
     component_cache.all_types_dict = {}
+    # Built-ins come from the prebuilt index via import_langflow_components().
+    # Never re-scan BASE_COMPONENTS_PATH here — lazy metadata stubs shallow-merge
+    # over index categories and wipe real templates (and cost tens of seconds on Windows).
+    custom_paths = [
+        p
+        for p in (settings_service.settings.components_path or [])
+        if Path(p).resolve(strict=False) != Path(BASE_COMPONENTS_PATH).resolve(strict=False)
+    ]
     if settings_service.settings.lazy_load_components:
-        # Partial loading mode - just load component metadata
         await logger.adebug("Using partial component loading")
-        component_cache.all_types_dict = await aget_component_metadata(settings_service.settings.components_path)
-    elif settings_service.settings.components_path:
-        # Traditional full loading - filter out base components path to only load custom components
-        custom_paths = [p for p in settings_service.settings.components_path if p != BASE_COMPONENTS_PATH]
         if custom_paths:
-            component_cache.all_types_dict = await aget_all_types_dict(custom_paths)
+            component_cache.all_types_dict = await aget_component_metadata(custom_paths)
+    elif custom_paths:
+        component_cache.all_types_dict = await aget_all_types_dict(custom_paths)
 
     # Log custom component loading stats
     components_dict = component_cache.all_types_dict or {}
@@ -1021,6 +1026,13 @@ async def import_extension_components(
     Components whose class fails to instantiate or template are skipped
     with a logged warning -- one bad bundle must not abort the cache build.
     """
+    # Desktop / constrained boots: scanning every pip dist for extension.json is
+    # very expensive on large frozen venvs (~40s observed) and is unused when the
+    # product ships built-in components only.
+    if os.getenv("LANGFLOW_SKIP_EXTENSION_COMPONENTS", "").lower() in ("1", "true", "yes"):
+        await logger.ainfo("Skipping extension component import (LANGFLOW_SKIP_EXTENSION_COMPONENTS)")
+        return {}
+
     extension_results = load_installed_extensions()
     # Seed-directory bundles are the second @official-slot production-install
     # source documented in deployment-extensions-production.mdx: a Docker

@@ -36,7 +36,7 @@ impl BootStage {
     pub fn splash_message(self) -> &'static str {
         match self {
             BootStage::Paths => "Resolving install and config paths…",
-            BootStage::Spawn => "Starting backend sidecar…",
+            BootStage::Spawn => "Starting backend…",
             BootStage::Ready => "Backend ready.",
             BootStage::WebviewOpen => "Opening Farhad Flow CI…",
             BootStage::Running => "Running.",
@@ -136,7 +136,9 @@ pub const PORT_RANGE: std::ops::RangeInclusive<u16> = 7860..=7870;
 pub const DEFAULT_PORT: u16 = 7860;
 
 /// Health poll until READY.
-pub const HEALTH_TIMEOUT_SECS: u64 = 120;
+/// Cold Windows first-boot (imports + SQLite + component index) can exceed 5 minutes;
+/// a prior 300s deadline caused false health_timeout kills mid-lifespan.
+pub const HEALTH_TIMEOUT_SECS: u64 = 600;
 pub const HEALTH_POLL_INTERVAL_MS: u64 = 500;
 
 /// Heartbeat while Running.

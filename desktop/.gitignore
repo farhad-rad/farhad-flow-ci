@@ -26,3 +26,7 @@ resources/git/**
 resources/MANIFEST.sha256
 resources/run-langflow.sh
 resources/run-langflow.ps1
+# Keep sidecar boot + default.env (generated launchers stay ignored).
+!resources/_langflow_boot.py
+!resources/env/
+!resources/env/**

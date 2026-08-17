@@ -136,6 +136,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!desktop/scripts/lib/
+!desktop/scripts/lib/**
 lib64/
 parts/
 sdist/
@@ -234,6 +236,8 @@ celerybeat.pid
 env/
 venv/
 ENV/
+!desktop/resources/env/
+!desktop/resources/env/**
 env.bak/
 venv.bak/
 

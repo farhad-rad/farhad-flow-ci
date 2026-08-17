@@ -1,4 +1,4 @@
-# Wave 3 — vendor MinGit into desktop/resources/git/ (Windows)
+﻿# Wave 3 - vendor MinGit into desktop/resources/git/ (Windows)
 # Reads pins from desktop/versions.lock.json (git.windows_mingit.*).
 # Layout: MinGit tree (cmd/, mingw64/, usr/) under resources/git/.
 # Requires: PowerShell 5+, curl or Invoke-WebRequest, Expand-Archive.
@@ -8,7 +8,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-
+if ($null -ne (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue)) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 $LockPath = Join-Path $DesktopDir "versions.lock.json"
 $Dest = Join-Path $DesktopDir "resources\git"
 $CacheDir = Join-Path $DesktopDir ".cache\git-src"

@@ -79,6 +79,11 @@ impl AppPaths {
 
     pub fn python_binary(&self) -> PathBuf {
         if cfg!(windows) {
+            // Prefer pythonw.exe so the sidecar does not open a console window.
+            let pythonw = self.resources_dir.join("python").join("pythonw.exe");
+            if pythonw.is_file() {
+                return pythonw;
+            }
             self.resources_dir.join("python").join("python.exe")
         } else {
             let p3 = self.resources_dir.join("python").join("bin").join("python3");
@@ -88,6 +93,11 @@ impl AppPaths {
                 self.resources_dir.join("python").join("bin").join("python")
             }
         }
+    }
+
+    /// Relocatable langflow entry that runs `site.addsitedir` (needed for pywin32 .pth).
+    pub fn langflow_boot_script(&self) -> PathBuf {
+        self.resources_dir.join("_langflow_boot.py")
     }
 
     pub fn frontend_dir(&self) -> PathBuf {
@@ -140,6 +150,19 @@ impl AppPaths {
                 dirs.push(dlls);
             }
             dirs.push(self.resources_dir.join("venv").join("Scripts"));
+            // pywin32: DLL + win32 packages must be on PATH (also loaded via .pth / addsitedir).
+            let site = self.resources_dir.join("venv").join("Lib").join("site-packages");
+            for rel in ["pywin32_system32", "win32", "win32/lib"] {
+                let p = site.join(rel);
+                if p.is_dir() {
+                    dirs.push(p);
+                }
+            }
+            // onnxruntime (magika/markitdown): native DLLs live beside the .pyd.
+            let ort = site.join("onnxruntime").join("capi");
+            if ort.is_dir() {
+                dirs.push(ort);
+            }
         } else {
             dirs.push(self.git_root().join("bin"));
             dirs.push(self.resources_dir.join("venv").join("bin"));

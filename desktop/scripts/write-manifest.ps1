@@ -1,6 +1,8 @@
-# Wave 2 — write desktop/resources/MANIFEST.sha256 for critical binaries.
+﻿# Wave 2 - write desktop/resources/MANIFEST.sha256 for critical binaries.
 $ErrorActionPreference = "Stop"
-
+if ($null -ne (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue)) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DesktopDir = (Resolve-Path (Join-Path $ScriptDir "..")).Path
 $ResourcesDir = Join-Path $DesktopDir "resources"
@@ -32,6 +34,9 @@ $candidates = @(
     "venv\pyvenv.cfg",
     "frontend\index.html",
     "env\default.env",
+    "_langflow_boot.py",
+    "python\pythonw.exe",
+    "python\msvcp140.dll",
     "git\bin\git",
     "git\cmd\git.exe",
     "run-langflow.ps1",
@@ -64,5 +69,5 @@ Get-Content $OutTmp |
     Set-Content -Encoding ASCII -Path $Out
 Remove-Item $OutTmp -Force
 $n = @(Get-Content $Out).Count
-Write-Host "OK: $n entries → $Out"
+Write-Host "OK: $n entries -> $Out"
 exit 0
